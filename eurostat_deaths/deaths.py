@@ -17,7 +17,7 @@ def tryInt(i):
     try: return int(i)
     except: return i
 
-def deaths(start = None, output = "output.csv", chunksize = 1):
+def deaths(start = None, output = None, chunksize = 1):
     """Reads data from Eurostat, filters and saves to CSV.
     
     Args:
