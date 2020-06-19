@@ -56,7 +56,17 @@ One additional setting is `chunksize` to set the size of chunk, that is processe
 
 ## Population
 
-**TODO**
+Populations in years for NUTS-2 and NUTS-3 regions can be fetched such as
+
+```python
+import eurostat_deaths as eurostat
+
+data = eurostat.populations()
+```
+
+Similarly as in `deaths()` call, `populations()` can be parametrized with `chunksize` (in thousands of lines) and `output`, forwarding the output to file rather than returning and hence saving time allocating a big data frame in main memory.
+
+Here the data volume is incomparably lower and hence the regular usage to return the data frame is possible.
 
 ## Credits
 

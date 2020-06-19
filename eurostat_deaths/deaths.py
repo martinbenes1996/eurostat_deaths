@@ -51,10 +51,8 @@ def deaths(start = None, output = None, chunksize = 1):
         
             # parse age groups
             chunk['age'] = chunk['age']\
-                .replace({'Y_LT5': 'Y0-4', 'Y_GE90': 'Y90'})\
-                .replace({'-':'_'})\
-                .apply(lambda i: i[1:])
-        
+                .replace({'Y_LT5': 'Y0-4', 'Y_GE90': 'Y90', 'Y_GE85': 'Y85'})\
+                .replace({r'(.*)-(.*)':r'\1_\2', r'Y(.*)':r'\1'}, regex = True)
             # filter weeks
             if start is not None and start > datetime(2000,1,1):
                 year, week = start.year, start.isocalendar()[1]
@@ -69,11 +67,12 @@ def deaths(start = None, output = None, chunksize = 1):
                 if i == 0: chunk.to_csv(output, mode='w', header=True, index=False)
                 else: chunk.to_csv(output, mode='a', header=False, index=False)
             else:
-                if data is None: data = data.append(chunk)
+                if data is None: data = chunk
                 else: data = data.concat(chunk)
             
             logging.info(f"parsed {chunksize * (i + 1) * 10**3}/64000 lines")
-
+    
+    return data
 
 def _parse_args():
     """Parses arguments for direct module execution."""
