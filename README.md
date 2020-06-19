@@ -47,7 +47,8 @@ The data can be forwarded directly to file. Give the function a filename by para
 from datetime import datetime
 import eurostat_deaths as eurostat
 
-data = eurostat.deaths(output = "file.csv", start = datetime(2019,1,1))
+# does not return, create a file with result
+eurostat.deaths(output = "file.csv", start = datetime(2019,1,1))
 ```
 
 Parameter `output = None` causes that the output is collected into a single dataframe and returned.
@@ -65,6 +66,13 @@ data = eurostat.populations()
 ```
 
 Similarly as in `deaths()` call, `populations()` can be parametrized with `chunksize` (in thousands of lines) and `output`, forwarding the output to file rather than returning and hence saving time allocating a big data frame in main memory.
+
+```python
+import eurostat_deaths as eurostat
+
+# does not return, create a file with result
+data = eurostat.populations(output = "file.csv")
+```
 
 Here the data volume is incomparably lower and hence the regular usage to return the data frame is possible.
 
