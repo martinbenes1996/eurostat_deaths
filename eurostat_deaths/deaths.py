@@ -1,11 +1,14 @@
 
-from datetime import datetime
+from datetime import datetime,timedelta
 import gzip
 from io import BytesIO
 import logging
+import os
+import pickle
+import warnings
+
 import pandas as pd
 import requests
-import warnings
 
 # soft int parser
 def tryInt(i):
@@ -17,7 +20,63 @@ def tryInt(i):
     try: return int(i)
     except: return i
 
-def deaths(start = None, output = None, chunksize = 1):
+def getDeaths(timestamp, cache = False, cache_age = timedelta(days = 7), chunksize = 1, output = None):
+    from_cache = False
+    if cache:
+        newest_version = None
+        for f in os.listdir("output/"):
+            try:
+                version = datetime.strptime(f, "%Y-%m-%d_raw.tsv.gz")
+                if abs(version - timestamp) < cache_age:
+                    newest_version = version if not newest_version or version > newest_version else newest_version
+                else:
+                    logging.info(f"found version {version} but older than cache_age tolerance")
+            except: pass
+            
+        if newest_version:
+            from_cache = True
+            logging.info(f"using version from {newest_version}")
+            # unzip tsv
+            with gzip.open(f"output/{newest_version.strftime('%Y-%m-%d')}_raw.tsv.gz") as z:
+                for chunk in pd.read_csv(z, sep=",|\t", engine = "python", chunksize = chunksize * 10**3):
+                    yield chunk
+        else:
+            logging.info("not found any cached version")
+     
+    if not from_cache:
+        # download zip
+        logging.warning("input has over 200MB, processing will take a few minutes (for me 15 min)")
+        url = 'https://ec.europa.eu/eurostat/estat-navtree-portlet-prod/BulkDownloadListing?file=data/demo_r_mweek3.tsv.gz'
+        zipinput = requests.get(url, stream=True)
+        if output:
+            logging.info("writing raw output to file")
+            with open(f"output/{timestamp.strftime('%Y-%m-%d')}_raw.tsv.gz", "wb") as fd:
+                for chunk in zipinput.iter_content(chunk_size = chunksize * 10**3):
+                    fd.write(chunk)
+            logging.info("written raw output to file")
+            zipinput = requests.get(url, stream=True)
+            
+        # unzip tsv
+        with gzip.GzipFile(fileobj = BytesIO(zipinput.content), mode = "r") as z:
+            logging.info("parsing zip file")
+        
+            for chunk in pd.read_csv(z, sep=",|\t", engine = "python", chunksize = chunksize * 10**3):
+                yield chunk
+
+def check_cache(timestamp, cache_age):
+    newest_version = None
+    for f in os.listdir("output/"):
+        try:
+            version = datetime.strptime(f, "%Y-%m-%d.pickle")
+            if abs(version - timestamp) < cache_age:
+                newest_version = version if not newest_version or version > newest_version else newest_version
+            else:
+                logging.info(f"found version {version} but older than cache_age tolerance")
+        except: pass
+    return f"output/{newest_version.strftime('%Y-%m-%d')}.pickle" 
+                
+def deaths(countries = None, start = None, chunksize = 1,
+           output = True, cache = True, cache_age = timedelta(days = 7)):
     """Reads data from Eurostat, filters and saves to CSV.
     
     Args:
@@ -26,98 +85,67 @@ def deaths(start = None, output = None, chunksize = 1):
         output (str, optional): Output file. If None, returns processed dataframe. Default is "output.csv".
         chunksize (int, optional): Size of chunk to process data by (in thousands). Default is 1 (1000 lines in chunk).
     """
-    # download zip
-    logging.warning("input has over 200MB, processing will take a few minutes (for me 15 min)")
-    logging.info("downloading zip file")
-    url = 'https://ec.europa.eu/eurostat/estat-navtree-portlet-prod/BulkDownloadListing?file=data/demo_r_mweek3.tsv.gz'
-    zipinput = requests.get(url, stream=True)
+    now = datetime.now()
+    if cache:
+        x = check_cache(now, cache_age)
+        if x:
+            print(f"loading {x}")
+            with open(x, "rb") as pf:
+                return pickle.load(pf)
+        print(x)
+        
     
-    # unzip tsv
     data = None
-    with gzip.GzipFile(fileobj = BytesIO(zipinput.content), mode = "r") as z:
-        logging.info("parsing zip file")
-        
-        for i,chunk in enumerate(pd.read_csv(z, sep=",|\t", engine = "python", chunksize = chunksize * 10**3)):
-            # columns
-            chunk.columns = [c.strip() for c in chunk.columns]
-            data_columns = set(chunk.columns) - {'unit','sex','age','geo\\time'}
+    for i,chunk in enumerate(getDeaths(now, output = output, chunksize = chunksize, cache = cache, cache_age = cache_age)):
+        # columns
+        chunk.columns = [c.strip() for c in chunk.columns]
+        data_columns = set(chunk.columns) - {'unit','sex','age','geo\\time'}
             
-            # parse data
-            chunk[ list(data_columns) ] = chunk[ list(data_columns) ]\
-                .replace({r'\s*:\s*': None, r'[^0-9]*([0-9]+)[^0-9]*': r'\1'}, regex = True)\
-                .apply(tryInt)
-            chunk = chunk\
-                .drop(['unit'], axis = 1)
+        # filter data
+        if countries:
+            f = None
+            for pre in countries:
+                matches = chunk['geo\\time'].str.startswith(pre)
+                f = f | matches if f else matches
+            chunk = chunk[f]
+            # all chunk filtered out
+            if len(chunk.index) == 0:
+                logging.info(f"whole chunk filtered out")
+                continue
+                
+        # parse data
+        chunk[ list(data_columns) ] = chunk.loc[ :,list(data_columns) ]\
+            .replace({r'\s*:\s*': None, r'[^0-9]*([0-9]+)[^0-9]*': r'\1'}, regex = True)\
+            .apply(tryInt)
+        chunk = chunk.loc[:,:]\
+            .drop(['unit'], axis = 1)
         
-            # parse age groups
-            chunk['age'] = chunk['age']\
-                .replace({'Y_LT5': 'Y0-4', 'Y_GE90': 'Y90', 'Y_GE85': 'Y85'})\
-                .replace({r'(.*)-(.*)':r'\1_\2', r'Y(.*)':r'\1'}, regex = True)
-            # filter weeks
-            if start is not None and start > datetime(2000,1,1):
-                year, week = start.year, start.isocalendar()[1]
-                cols_to_remove = [f"{y}W{str(w).zfill(2)}" for y in range(2000,year + 1) for w in range(1,54) if y < year or w < week]
-                for col in cols_to_remove:
-                    try:
-                        chunk = chunk\
-                            .drop(col, axis = 1)
-                    except: pass
-            # output
-            if output is not None:
-                if i == 0: chunk.to_csv(output, mode='w', header=True, index=False)
-                else: chunk.to_csv(output, mode='a', header=False, index=False)
-            else:
-                if data is None: data = chunk
-                else: data = data.concat(chunk)
+        # parse age groups
+        chunk['age'] = chunk.loc[:,'age']\
+            .replace({'Y_LT5': 'Y0-4', 'Y_GE90': 'Y90', 'Y_GE85': 'Y85'})\
+            .replace({r'(.*)-(.*)':r'\1_\2', r'Y(.*)':r'\1'}, regex = True)
+        # filter weeks
+        if start is not None and start > datetime(2000,1,1):
+            year, week = start.year, start.isocalendar()[1]
+            cols_to_remove = [f"{y}W{str(w).zfill(2)}" for y in range(2000,year + 1) for w in range(1,54) if y < year or w < week]
+            for col in cols_to_remove:
+                try:
+                    chunk = chunk\
+                        .drop(col, axis = 1)
+                except: pass
+        # output
+        if output:
+            output_file = f"output/{now.strftime('%Y-%m-%d')}.csv"
+            if i == 0: chunk.to_csv(output_file, mode='w', header=True, index=False)
+            else: chunk.to_csv(output_file, mode='a', header=False, index=False)
             
-            logging.info(f"parsed {chunksize * (i + 1) * 10**3}/64000 lines")
+        if data is None: data = chunk
+        else: data = data.append(chunk)
+            
+        logging.info(f"parsed {chunksize * (i + 1) * 10**3}/64000 lines")
     
+    with open(f"output/{now.strftime('%Y-%m-%d')}.pickle", "wb") as pf:
+        pickle.dump(data, pf)
     return data
-
-def _parse_args():
-    """Parses arguments for direct module execution."""
-    # parse arguments
-    import argparse        
-    def check_positive(value):
-        ivalue = int(value)
-        if ivalue <= 0: raise argparse.ArgumentTypeError(f"{value} is an invalid positive int value")
-        return ivalue
-    def check_date(value):
-        # dates
-        try: return datetime.strptime(f"{value}-01-01", "%Y-%m-%d")
-        except: pass
-        try: return datetime.strptime(value, "%Y-%m-%d")
-        except: pass
-        # datetime
-        try: return datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
-        except: pass
-        # week of year
-        try: return datetime.strptime(f"{value}-1", "%Y-W%W-%w")
-        except: pass
-        
-        raise argparse.ArgumentTypeError(f"{value} is an invalid date/week value")
-    
-    # create argument records
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-o", "--output", help="Directs the output to a name of your choice.")
-    parser.add_argument("-n", "--chunksize", type=check_positive, help="Number of lines in chunk (in thousands).")
-    parser.add_argument("-s", "--start", type=check_date, help="Start date.")
-    parser.add_argument("-v", "--verbose", action='count', default=0, help="Sets verbose log (logging level INFO).")
-    args = parser.parse_args()
-    # parse arguments
-    return {'--output': args.output if args.output else "output.csv",
-            '--chunksize': args.chunksize if args.chunksize else 1,
-            '--start': args.start if args.start else None,
-            '--verbose': bool(args.verbose) if args.verbose else False}
-
-if __name__ == "__main__":
-    # parse arguments
-    args = _parse_args()
-    # set verbose
-    if args['--verbose']:
-        logging.basicConfig(level = logging.INFO)
-    
-    # call main function
-    deaths(start = args['--start'], output = args['--output'], chunksize = args['--chunksize'])
 
 __all__ = ["deaths"]

@@ -34,7 +34,7 @@ def populations(output = None, chunksize = 10):
             # parse data
             chunk[ list(data_columns) ] = chunk[ list(data_columns) ]\
                 .replace({r'\s*:\s*': None, r'[^0-9]*([0-9]+)[^0-9]*': r'\1'}, regex = True)\
-                .apply(tryInt)
+                .applymap(tryInt)
             chunk = chunk\
                 .drop(['unit'], axis = 1)
             

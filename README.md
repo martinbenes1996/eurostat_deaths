@@ -41,17 +41,21 @@ You receive per-week data of deaths. Since the total size of the data frame is a
 
 In the future, module will be reimplemented to use Big Data framework, such as PySpark.
 
-The data can be forwarded directly to file. Give the function a filename by parameter `output`.
+The data are forwarded directly to file by default:
+* raw output
+* cleaned (.csv)
+* pickle file
 
 ```python
 from datetime import datetime
 import eurostat_deaths as eurostat
 
 # does not return, create a file with result
-eurostat.deaths(output = "file.csv", start = datetime(2019,1,1))
+eurostat.deaths(output = True, start = datetime(2019,1,1))
 ```
 
-Parameter `output = None` causes that the output is collected into a single dataframe and returned.
+
+Parameter `output = True` causes that the output is collected into a single dataframe and returned.
 
 One additional setting is `chunksize` to set the size of chunk, that is processed at a time. The unit used is thousands of rows.
 
@@ -71,10 +75,20 @@ Similarly as in `deaths()` call, `populations()` can be parametrized with `chunk
 import eurostat_deaths as eurostat
 
 # does not return, create a file with result
-data = eurostat.populations(output = "file.csv")
+eurostat.populations(output = True)
 ```
 
 Here the data volume is incomparably lower and hence the regular usage to return the data frame is possible.
+
+## Caching
+
+A simple local caching is already embedded in the deaths reading by default.
+
+Cache can be explicitly turned off by `cache` (reading from) and `output` (write to)
+
+```python
+data = eurostat.populations(output = "file.csv")
+```
 
 ## Credits
 
