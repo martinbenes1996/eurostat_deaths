@@ -1,7 +1,9 @@
 
+from datetime import datetime
 import gzip
 from io import BytesIO
 import logging
+import os
 
 import pandas as pd
 import requests
@@ -16,7 +18,11 @@ def tryInt(i):
     try: return int(i)
     except: return i
 
-def populations(output = None, chunksize = 10):
+def populations(output = False, chunksize = 10):
+    now = datetime.now()
+    if output:
+        os.mkdir("output")
+        output_file = f"output/{now.strftime('%Y-%m-%d')}_population.csv"
     # download zip
     url = 'https://ec.europa.eu/eurostat/estat-navtree-portlet-prod/BulkDownloadListing?file=data/demo_r_pjangrp3.tsv.gz'
     zipinput = requests.get(url, stream = True)
@@ -43,12 +49,12 @@ def populations(output = None, chunksize = 10):
                 .replace({'Y_LT5': 'Y0-4', 'Y_GE90': 'Y90', 'Y_GE85': 'Y85'})\
                 .replace({r'(.*)-(.*)':r'\1_\2', r'Y(.*)':r'\1'}, regex = True)
             # output
-            if output is not None:
-                if i == 0: chunk.to_csv(output, mode='w', header=True, index=False)
-                else: chunk.to_csv(output, mode='a', header=False, index=False)
-            else:
-                if data is None: data = chunk
-                else: data = data.append(chunk)
+            if output:
+                if i == 0: chunk.to_csv(output_file, mode='w', header=True, index=False)
+                else: chunk.to_csv(output_file, mode='a', header=False, index=False)
+            
+            if data is None: data = chunk
+            else: data = data.append(chunk)
             
             logging.info(f"parsed {chunksize*i*10**3 + min(chunksize*10**3, chunk.shape[0])}/131880 lines")
     
