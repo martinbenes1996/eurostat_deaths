@@ -85,6 +85,8 @@ def deaths(countries = None, start = None, chunksize = 1,
         output (str, optional): Output file. If None, returns processed dataframe. Default is "output.csv".
         chunksize (int, optional): Size of chunk to process data by (in thousands). Default is 1 (1000 lines in chunk).
     """
+    if output or cache:
+        os.mkdir("output")
     now = datetime.now()
     if cache:
         x = check_cache(now, cache_age)

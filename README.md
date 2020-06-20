@@ -54,10 +54,25 @@ import eurostat_deaths as eurostat
 eurostat.deaths(output = True, start = datetime(2019,1,1))
 ```
 
-
 Parameter `output = True` causes that the output is collected into a single dataframe and returned.
 
 One additional setting is `chunksize` to set the size of chunk, that is processed at a time. The unit used is thousands of rows.
+
+### Caching
+
+A simple local caching is already embedded in the deaths reading by default.
+
+Cache is operated (disabled) with parameters `cache` (reading from) and `output` (write to)
+
+```python
+eurostat.deaths(output = False) # reading enabled, but keeps the old versions
+```
+
+The newest result to be written into file is done with
+
+```python
+eurostat.deaths(cache = False) # fetch newest result
+```
 
 ## Population
 
@@ -80,15 +95,6 @@ eurostat.populations(output = True)
 
 Here the data volume is incomparably lower and hence the regular usage to return the data frame is possible.
 
-## Caching
-
-A simple local caching is already embedded in the deaths reading by default.
-
-Cache can be explicitly turned off by `cache` (reading from) and `output` (write to)
-
-```python
-data = eurostat.populations(output = "file.csv")
-```
 
 ## Credits
 
