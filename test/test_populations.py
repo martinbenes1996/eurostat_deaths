@@ -8,15 +8,7 @@ import eurostat_deaths as eurostat
 
 class TestPopulations(unittest.TestCase):
     def test_populations_output(self):
-        pickle_file = 'test/data_populations.pickle'
-        if os.path.exists(pickle_file):
-            with open(pickle_file,'rb') as pf:
-                data = pickle.load(pf)
-        else:
-            data = eurostat.populations(chunksize = 10)
-            with open(pickle_file, 'wb') as pf:
-                pickle.dump(data, pf)
-        return
+        data = eurostat.populations(chunksize = 10)
         # columns
         self.assertIn("sex", data.columns)
         self.assertIn("age", data.columns)
