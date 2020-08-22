@@ -87,7 +87,7 @@ def deaths(regions = None, sex = None, age = None, start = None):
             f = None
             for pre in regions:
                 matches = chunk['region'].str.startswith(pre)
-                f = f | matches if f else matches
+                f = f | matches if f is not None else matches
             chunk = chunk[f]
             # all chunk filtered out
             if len(chunk.index) == 0:
@@ -123,5 +123,5 @@ __all__ = ["deaths"]
 
 if __name__ == "__main__":
     logging.basicConfig(level = logging.INFO)
-    x = deaths(["CZ"], start = datetime(2019,1,1))
+    x = deaths(["CZ","PL"], start = datetime(2019,1,1))
     print(x)
